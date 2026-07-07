@@ -1,0 +1,149 @@
+# KNOWN_VULNS — ground-truth vulnerability catalog
+# Purpose: answer key for benchmarking Scantonomous scan findings against this app.
+# Diff scanner output vs. this file: a hit on a `vulnerable_source` path == true positive;
+# a hit on a `secure_source` path == false positive.
+#
+# Schema per entry:
+#   id               stable slug for this vuln class
+#   category         human-readable vulnerability class
+#   cwe              primary CWE id(s)
+#   owasp            OWASP Top 10 (2021) category
+#   module           app-internal module/feature name
+#   route            HTTP path to reach it (DAST)
+#   parameter        injectable/tainted input(s) (DAST)
+#   vulnerable_source source files that ARE vulnerable (SAST true-positive targets)
+#   secure_source    hardened variant that is NOT vulnerable (false-positive test)
+#   notes            context / caveats
+
+app: Hackazon
+full_name: Hackazon (realistic vulnerable e-commerce app)
+upstream: https://github.com/rapid7/hackazon
+fork: https://github.com/tomj12k/hackazon
+language: PHP
+scan_surface: [SAST-php, DAST-web]
+catalog_notes: >
+  Hackazon is a full PHPixie-based store, not a page-per-bug app. Vulnerabilities
+  are toggled per field/context via a config-driven engine ("VulnModule") and the
+  concrete flaws are implemented as one class each under
+  modules/vulninjection/classes/VulnModule/Vulnerability/*.php, wired into the
+  store controllers and the REST service. The app's own inventory is
+  VULNERABILITIES.md at repo root. Because exploitability depends on the runtime
+  vuln config (assets/config/vuln.sample/*), a scanner should treat the
+  Vulnerability/*.php sinks and their wiring points as the true-positive targets.
+  secure_source is empty (protection is the same file with the vuln flag off).
+  Paths are relative to repo root.
+
+vulns:
+  - id: hackazon-sqli
+    category: SQL Injection (error-based & blind)
+    cwe: [CWE-89]
+    owasp: A03:2021-Injection
+    route: /search?q=
+    parameter: [q, name, price, brand]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/SQL.php, classes/App/SearchFilters/NameFilter.php, classes/App/SearchFilters/PriceFilter.php, classes/App/SearchFilters/BrandFilter.php, classes/PDOV/Query.php]
+    secure_source: []
+    notes: PDOV is a PDO wrapper that concatenates values when the field's SQL vuln is enabled.
+
+  - id: hackazon-xss-reflected
+    category: Reflected XSS
+    cwe: [CWE-79]
+    owasp: A03:2021-Injection
+    route: /search?q=
+    parameter: [q]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/XSS.php, classes/App/Core/View/Helper.php]
+    secure_source: []
+    notes: The $_() view helper skips htmlspecialchars for fields whose XSS vuln is enabled.
+
+  - id: hackazon-xss-stored
+    category: Stored XSS
+    cwe: [CWE-79]
+    owasp: A03:2021-Injection
+    route: /product/view (product reviews)
+    parameter: [review, comment]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/XSS.php, classes/App/Controller/Review.php, classes/App/Controller/Product.php]
+    secure_source: []
+    notes: When stored XSS is enabled the field is not stripped of script/on-*/javascript: before persisting.
+
+  - id: hackazon-csrf
+    category: Cross-Site Request Forgery (token & referer bypass)
+    cwe: [CWE-352]
+    owasp: A01:2021-Broken Access Control
+    route: /account/profile/edit
+    parameter: []
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/CSRF.php, modules/vulninjection/classes/VulnModule/Vulnerability/Referer.php]
+    secure_source: []
+    notes: With CSRF enabled for a context, token check always returns true and no token is rendered.
+
+  - id: hackazon-command-injection
+    category: OS Command Injection
+    cwe: [CWE-78]
+    owasp: A03:2021-Injection
+    route: /page/show?page=
+    parameter: [page]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/OSCommand.php]
+    secure_source: []
+
+  - id: hackazon-file-upload
+    category: Arbitrary / Unrestricted File Upload
+    cwe: [CWE-434]
+    owasp: A05:2021-Security Misconfiguration
+    route: /account/profile/edit
+    parameter: [photo]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/ArbitraryFileUpload.php, classes/App/Core/UploadedFile.php, classes/App/Controller/Account.php]
+    secure_source: []
+
+  - id: hackazon-rfi
+    category: Remote File Inclusion
+    cwe: [CWE-98]
+    owasp: A03:2021-Injection
+    route: /account/help_articles?page=
+    parameter: [page]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/RemoteFileInclude.php, classes/App/Controller/Account.php]
+    secure_source: []
+
+  - id: hackazon-path-traversal
+    category: Path Traversal (Local File Disclosure)
+    cwe: [CWE-22]
+    owasp: A01:2021-Broken Access Control
+    route: /account/help_articles?page=
+    parameter: [page]
+    vulnerable_source: [classes/App/Controller/Account.php, modules/vulninjection/classes/VulnModule/Vulnerability/RemoteFileInclude.php]
+    secure_source: []
+    notes: Same help_articles ?page= sink also permits ../ / null-byte traversal (e.g. /etc/passwd%00).
+
+  - id: hackazon-xxe
+    category: XML External Entity (XXE)
+    cwe: [CWE-611]
+    owasp: A05:2021-Security Misconfiguration
+    route: /api/ (REST, XML body)
+    parameter: [xml-body]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/XMLExternalEntity.php, classes/App/Core/Request.php, classes/App/Rest/Controller.php]
+    secure_source: []
+    notes: Request.php enables libxml external entity loading unless the XMLExternalEntity vuln is off.
+
+  - id: hackazon-referer-bypass
+    category: Improper Referer-based Access Control
+    cwe: [CWE-807, CWE-346]
+    owasp: A01:2021-Broken Access Control
+    route: / (POST requests)
+    parameter: [Referer]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/Referer.php]
+    secure_source: []
+
+  - id: hackazon-integer-overflow
+    category: Integer Overflow
+    cwe: [CWE-190]
+    owasp: A04:2021-Insecure Design
+    route: /cart (quantity)
+    parameter: [quantity]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/IntegerOverflow.php]
+    secure_source: []
+
+  - id: hackazon-weak-session-id
+    category: Predictable / Overflowable PHP Session ID
+    cwe: [CWE-330, CWE-384]
+    owasp: A07:2021-Identification and Authentication Failures
+    route: /
+    parameter: [PHPSESSID]
+    vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/PHPSessionIdOverflow.php]
+    secure_source: []
