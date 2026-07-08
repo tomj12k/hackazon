@@ -62,7 +62,7 @@ vulns:
     parameter: [review, comment]
     vulnerable_source: [modules/vulninjection/classes/VulnModule/Vulnerability/XSS.php, classes/App/Controller/Review.php, classes/App/Controller/Product.php]
     secure_source: []
-    notes: When stored XSS is enabled the field is not stripped of script/on-*/javascript: before persisting.
+    notes: 'When stored XSS is enabled the field is not stripped of script/on-*/javascript: before persisting.'
 
   - id: hackazon-csrf
     category: Cross-Site Request Forgery (token & referer bypass)
